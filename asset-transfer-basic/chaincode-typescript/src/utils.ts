@@ -24,14 +24,14 @@ export class ChannelUtils {
     }
 
     public static validateSignatures(state: ChannelState, party1: PartyAddress, party2: PartyAddress): boolean {
-        try {
-            // Create message hash from channel state
-            const messageHash = this.createStateHash(state);
+        if (!Array.isArray(state.signatures) || state.signatures.length !== 2) {
+            return false;
+        }
 
-            // Verify both signatures
+        try {
+            const messageHash = this.createStateHash(state);
             const validSig1 = this.verifySignature(messageHash, state.signatures[0], party1.publicKey);
             const validSig2 = this.verifySignature(messageHash, state.signatures[1], party2.publicKey);
-
             return validSig1 && validSig2;
         } catch (error) {
             console.error('Signature validation error:', error);

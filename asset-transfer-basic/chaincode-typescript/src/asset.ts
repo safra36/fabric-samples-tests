@@ -1,7 +1,3 @@
-/*
-  SPDX-License-Identifier: Apache-2.0
-*/
-
 import {Object, Property} from 'fabric-contract-api';
 
 @Object()
@@ -79,4 +75,8 @@ export class ChannelState {
 
     @Property()
     public signatures: string[] = [];
+
+    constructor() {
+        this.signatures = []; // Initialize as empty array
+    }
 }
