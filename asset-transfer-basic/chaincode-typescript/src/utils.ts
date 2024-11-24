@@ -17,21 +17,21 @@ export class ChannelUtils {
 
     public static async getState(ctx: Context, key: string): Promise<any> {
         const bytes = await ctx.stub.getState(key);
-        if (bytes.length === 0) {
+        if (!bytes || bytes.length === 0) {
             return null;
         }
         return JSON.parse(bytes.toString());
     }
 
     public static validateSignatures(state: ChannelState, party1: PartyAddress, party2: PartyAddress): boolean {
-        if (!Array.isArray(state.signatures) || state.signatures.length !== 2) {
-            return false;
-        }
-
         try {
+            // Create message hash from channel state (excluding signatures)
             const messageHash = this.createStateHash(state);
-            const validSig1 = this.verifySignature(messageHash, state.signatures[0], party1.publicKey);
-            const validSig2 = this.verifySignature(messageHash, state.signatures[1], party2.publicKey);
+
+            // Verify both signatures
+            const validSig1 = this.verifySignature(messageHash, state.signature1, party1.publicKey);
+            const validSig2 = this.verifySignature(messageHash, state.signature2, party2.publicKey);
+
             return validSig1 && validSig2;
         } catch (error) {
             console.error('Signature validation error:', error);
@@ -53,18 +53,18 @@ export class ChannelUtils {
     }
 
     private static verifySignature(messageHash: Buffer, signature: string, publicKeyHex: string): boolean {
-        try {
-            // Convert hex public key to EC key point
-            const publicKey = this.ec.keyFromPublic(publicKeyHex, 'hex');
+        if (!signature || !publicKeyHex) {
+            return false;
+        }
 
-            // Decode signature from base64
+        try {
+            const publicKey = this.ec.keyFromPublic(publicKeyHex, 'hex');
             const signatureBuffer = Buffer.from(signature, 'base64');
             const signatureObj = {
                 r: signatureBuffer.slice(0, 32).toString('hex'),
                 s: signatureBuffer.slice(32, 64).toString('hex')
             };
 
-            // Verify signature
             return publicKey.verify(messageHash, signatureObj);
         } catch (error) {
             console.error('Signature verification error:', error);

@@ -74,9 +74,8 @@ export class ChannelState {
     public nonce: number = 0;
 
     @Property()
-    public signatures: string[] = [];
+    public signature1: string = '';  // Changed from signatures array to individual properties
 
-    constructor() {
-        this.signatures = []; // Initialize as empty array
-    }
+    @Property()
+    public signature2: string = '';  // Changed from signatures array to individual properties
 }
