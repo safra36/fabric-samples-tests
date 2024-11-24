@@ -15,7 +15,7 @@ export class PaymentChannelContract extends Contract {
 
 
 
-    @Transaction()
+    /* @Transaction()
     public async ProposeChannel(
         ctx: Context,
         channelId: string,
@@ -47,7 +47,7 @@ export class PaymentChannelContract extends Contract {
         };
 
         await ChannelUtils.putState(ctx, channelId, channel);
-    }
+    } */
 
 
     /*
