@@ -1,173 +1,246 @@
+
 /*
  * SPDX-License-Identifier: Apache-2.0
  */
-// Deterministic JSON.stringify()
-import {Context, Contract, Info, Returns, Transaction} from 'fabric-contract-api';
-import stringify from 'json-stringify-deterministic';
-import sortKeysRecursive from 'sort-keys-recursive';
-import {Asset} from './asset';
 
-@Info({title: 'AssetTransfer', description: 'Smart contract for trading assets'})
-export class AssetTransferContract extends Contract {
+
+import { Context, Contract, Info, Transaction } from 'fabric-contract-api';
+import { ChannelUtils } from './utils';
+import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
+// import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
+
+
+@Info({ title: 'PaymentChannelContract', description: 'Smart contract for payment channels' })
+export class PaymentChannelContract extends Contract {
+
+
 
     @Transaction()
-    public async InitLedger(ctx: Context): Promise<void> {
-        const assets: Asset[] = [
-            {
-                ID: 'asset1',
-                Color: 'blue',
-                Size: 5,
-                Owner: 'Tomoko',
-                AppraisedValue: 300,
-            },
-            {
-                ID: 'asset2',
-                Color: 'red',
-                Size: 5,
-                Owner: 'Brad',
-                AppraisedValue: 400,
-            },
-            {
-                ID: 'asset3',
-                Color: 'green',
-                Size: 10,
-                Owner: 'Jin Soo',
-                AppraisedValue: 500,
-            },
-            {
-                ID: 'asset4',
-                Color: 'yellow',
-                Size: 10,
-                Owner: 'Max',
-                AppraisedValue: 600,
-            },
-            {
-                ID: 'asset5',
-                Color: 'black',
-                Size: 15,
-                Owner: 'Adriana',
-                AppraisedValue: 700,
-            },
-            {
-                ID: 'asset6',
-                Color: 'white',
-                Size: 15,
-                Owner: 'Michel',
-                AppraisedValue: 800,
-            },
-        ];
-
-        for (const asset of assets) {
-            asset.docType = 'asset';
-            // example of how to write to world state deterministically
-            // use convetion of alphabetic order
-            // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-            // when retrieving data, in any lang, the order of data will be the same and consequently also the corresonding hash
-            await ctx.stub.putState(asset.ID, Buffer.from(stringify(sortKeysRecursive(asset))));
-            console.info(`Asset ${asset.ID} initialized`);
-        }
-    }
-
-    // CreateAsset issues a new asset to the world state with given details.
-    @Transaction()
-    public async CreateAsset(ctx: Context, id: string, color: string, size: number, owner: string, appraisedValue: number): Promise<void> {
-        const exists = await this.AssetExists(ctx, id);
+    public async ProposeChannel(
+        ctx: Context,
+        channelId: string,
+        party1Address: string,
+        party1PubKey: string,
+        party2Address: string,
+        party2PubKey: string,
+        initialBalance1: number,
+        initialBalance2: number
+    ): Promise<void> {
+        const exists = await ChannelUtils.getState(ctx, channelId);
         if (exists) {
-            throw new Error(`The asset ${id} already exists`);
+            throw new Error(`Channel ${channelId} already exists`);
         }
 
-        const asset = {
-            ID: id,
-            Color: color,
-            Size: size,
-            Owner: owner,
-            AppraisedValue: appraisedValue,
+        const party1: PartyAddress = { address: party1Address, publicKey: party1PubKey };
+        const party2: PartyAddress = { address: party2Address, publicKey: party2PubKey };
+
+        const channel: Channel = {
+            channelId,
+            party1,
+            party2,
+            balance1: initialBalance1,
+            balance2: initialBalance2,
+            status: ChannelStatus.PROPOSED,
+            nonce: 0,
+            multiSigAddress: ChannelUtils.generateMultiSigAddress(party1, party2),
+            createdAt: ctx.stub.getTxTimestamp().seconds.toNumber()
         };
-        // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-        await ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
+
+        await ChannelUtils.putState(ctx, channelId, channel);
     }
 
-    // ReadAsset returns the asset stored in the world state with given id.
-    @Transaction(false)
-    public async ReadAsset(ctx: Context, id: string): Promise<string> {
-        const assetJSON = await ctx.stub.getState(id); // get the asset from chaincode state
-        if (assetJSON.length === 0) {
-            throw new Error(`The asset ${id} does not exist`);
-        }
-        return assetJSON.toString();
-    }
 
-    // UpdateAsset updates an existing asset in the world state with provided parameters.
+    /*
+
     @Transaction()
-    public async UpdateAsset(ctx: Context, id: string, color: string, size: number, owner: string, appraisedValue: number): Promise<void> {
-        const exists = await this.AssetExists(ctx, id);
-        if (!exists) {
-            throw new Error(`The asset ${id} does not exist`);
+    public async ActivateChannel(
+        ctx: Context,
+        channelId: string,
+        fundingTxId: string
+    ): Promise<void> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} does not exist`);
+        }
+        if (channel.status !== ChannelStatus.PROPOSED) {
+            throw new Error(`Channel ${channelId} is not in PROPOSED state`);
         }
 
-        // overwriting original asset with new asset
-        const updatedAsset = {
-            ID: id,
-            Color: color,
-            Size: size,
-            Owner: owner,
-            AppraisedValue: appraisedValue,
+        // Verify funding transaction
+        const expectedAmount = channel.balance1 + channel.balance2;
+        const fundingTx = await this.verifyFundingTransaction(ctx, fundingTxId, channel.multiSigAddress, expectedAmount);
+        if (!fundingTx) {
+            throw new Error('Invalid or insufficient funding transaction');
+        }
+
+        channel.status = ChannelStatus.ACTIVE;
+        channel.fundingTxId = fundingTxId;
+        await ChannelUtils.putState(ctx, channelId, channel);
+    }
+
+    @Transaction()
+    public async InitiateChannelClosure(
+        ctx: Context,
+        channelId: string,
+        finalState: ChannelState
+    ): Promise<void> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} does not exist`);
+        }
+        if (channel.status !== ChannelStatus.ACTIVE) {
+            throw new Error(`Channel ${channelId} is not active`);
+        }
+
+        if (!ChannelUtils.validateSignatures(finalState, channel.party1, channel.party2)) {
+            throw new Error('Invalid signatures on final state');
+        }
+
+        if (finalState.nonce <= channel.nonce) {
+            throw new Error('Final state nonce must be greater than current nonce');
+        }
+
+        channel.status = ChannelStatus.CLOSING;
+        channel.balance1 = finalState.balance1;
+        channel.balance2 = finalState.balance2;
+        channel.nonce = finalState.nonce;
+
+        await ChannelUtils.putState(ctx, channelId, channel);
+    }
+
+    @Transaction()
+    public async FinalizeChannelClosure(
+        ctx: Context,
+        channelId: string
+    ): Promise<void> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} does not exist`);
+        }
+        if (channel.status !== ChannelStatus.CLOSING) {
+            throw new Error(`Channel ${channelId} is not in closing state`);
+        }
+
+        const currentTime = ctx.stub.getTxTimestamp().seconds;
+        const DISPUTE_PERIOD = 24 * 60 * 60; // 24 hours
+
+        if (currentTime < channel.createdAt + DISPUTE_PERIOD) {
+            throw new Error('Dispute period has not ended');
+        }
+
+        // Create settlement transactions
+        const settlementTx1 = {
+            from: channel.multiSigAddress,
+            to: channel.party1.address,
+            amount: channel.balance1,
+            channelId: channel.channelId,
+            type: 'SETTLEMENT'
         };
-        // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-        return ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(updatedAsset))));
+
+        const settlementTx2 = {
+            from: channel.multiSigAddress,
+            to: channel.party2.address,
+            amount: channel.balance2,
+            channelId: channel.channelId,
+            type: 'SETTLEMENT'
+        };
+
+        // Store settlement transactions
+        await ChannelUtils.putState(ctx, `${channelId}_settlement1`, settlementTx1);
+        await ChannelUtils.putState(ctx, `${channelId}_settlement2`, settlementTx2);
+
+        channel.status = ChannelStatus.CLOSED;
+        channel.closedAt = currentTime;
+        channel.settlementTx1Id = `${channelId}_settlement1`;
+        channel.settlementTx2Id = `${channelId}_settlement2`;
+
+        await ChannelUtils.putState(ctx, channelId, channel);
     }
 
-    // DeleteAsset deletes an given asset from the world state.
-    @Transaction()
-    public async DeleteAsset(ctx: Context, id: string): Promise<void> {
-        const exists = await this.AssetExists(ctx, id);
-        if (!exists) {
-            throw new Error(`The asset ${id} does not exist`);
+    private async verifyFundingTransaction(
+        ctx: Context,
+        txId: string,
+        multiSigAddress: string,
+        expectedAmount: number
+    ): Promise<boolean> {
+        // Get transaction from ledger
+        const txBytes = await ctx.stub.getState(txId);
+        if (!txBytes || txBytes.length === 0) {
+            return false;
         }
-        return ctx.stub.deleteState(id);
+
+        const tx = JSON.parse(txBytes.toString());
+        return (
+            tx.recipient === multiSigAddress &&
+            tx.amount >= expectedAmount &&
+            tx.status === 'CONFIRMED'
+        );
     }
 
-    // AssetExists returns true when asset with given ID exists in world state.
-    @Transaction(false)
-    @Returns('boolean')
-    public async AssetExists(ctx: Context, id: string): Promise<boolean> {
-        const assetJSON = await ctx.stub.getState(id);
-        return assetJSON.length > 0;
-    }
+    */
 
-    // TransferAsset updates the owner field of asset with given id in the world state, and returns the old owner.
     @Transaction()
-    public async TransferAsset(ctx: Context, id: string, newOwner: string): Promise<string> {
-        const assetString = await this.ReadAsset(ctx, id);
-        const asset = JSON.parse(assetString) as Asset;
-        const oldOwner = asset.Owner;
-        asset.Owner = newOwner;
-        // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-        await ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
-        return oldOwner;
-    }
-
-    // GetAllAssets returns all assets found in the world state.
-    @Transaction(false)
-    @Returns('string')
-    public async GetAllAssets(ctx: Context): Promise<string> {
-        const allResults = [];
-        // range query with empty string for startKey and endKey does an open-ended query of all assets in the chaincode namespace.
-        const iterator = await ctx.stub.getStateByRange('', '');
-        let result = await iterator.next();
-        while (!result.done) {
-            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
-            let record;
-            try {
-                record = JSON.parse(strValue) as Asset;
-            } catch (err) {
-                console.log(err);
-                record = strValue;
-            }
-            allResults.push(record);
-            result = await iterator.next();
+    public async GetSettlementTransactions(
+        ctx: Context,
+        channelId: string
+    ): Promise<string> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel || channel.status !== ChannelStatus.CLOSED) {
+            throw new Error(`No settlement transactions for channel ${channelId}`);
         }
-        return JSON.stringify(allResults);
+
+        const tx1 = await ChannelUtils.getState(ctx, channel.settlementTx1Id);
+        const tx2 = await ChannelUtils.getState(ctx, channel.settlementTx2Id);
+
+        return JSON.stringify({
+            settlement1: tx1,
+            settlement2: tx2
+        });
     }
 
+
+
+    /* @Transaction()
+    public async DisputeChannel(
+        ctx: Context,
+        channelId: string,
+        disputeState: ChannelState
+    ): Promise<void> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} does not exist`);
+        }
+        if (channel.status !== ChannelStatus.CLOSING) {
+            throw new Error(`Channel ${channelId} is not in closing state`);
+        }
+
+        if (!ChannelUtils.validateSignatures(disputeState, channel.party1, channel.party2)) {
+            throw new Error('Invalid signatures on dispute state');
+        }
+
+        if (disputeState.nonce <= channel.nonce) {
+            throw new Error('Dispute state nonce must be greater than current nonce');
+        }
+
+        channel.status = ChannelStatus.DISPUTED;
+        channel.balance1 = disputeState.balance1;
+        channel.balance2 = disputeState.balance2;
+        channel.nonce = disputeState.nonce;
+
+        await ChannelUtils.putState(ctx, channelId, channel);
+    } */
+
+
+
+    @Transaction(false)
+    public async GetChannel(
+        ctx: Context,
+        channelId: string
+    ): Promise<string> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} does not exist`);
+        }
+        return JSON.stringify(channel);
+    }
 }

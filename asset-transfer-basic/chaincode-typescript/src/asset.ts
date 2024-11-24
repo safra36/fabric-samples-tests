@@ -5,22 +5,78 @@
 import {Object, Property} from 'fabric-contract-api';
 
 @Object()
-export class Asset {
+export class PartyAddress {
     @Property()
-    public docType?: string;
+    public address: string = '';
 
     @Property()
-    public ID: string = '';
+    public publicKey: string = '';
+}
+
+@Object()
+export class Channel {
+    @Property()
+    public channelId: string = '';
 
     @Property()
-    public Color: string = '';
+    public party1: PartyAddress = new PartyAddress();
 
     @Property()
-    public Size: number = 0;
+    public party2: PartyAddress = new PartyAddress();
 
     @Property()
-    public Owner: string = '';
+    public balance1: number = 0;
 
     @Property()
-    public AppraisedValue: number = 0;
+    public balance2: number = 0;
+
+    @Property()
+    public status: string = ChannelStatus.PROPOSED;
+
+    @Property()
+    public nonce: number = 0;
+
+    @Property()
+    public multiSigAddress: string = '';
+
+    @Property()
+    public createdAt: number = 0;
+
+    @Property()
+    public closedAt?: number;
+
+    @Property()
+    public fundingTxId?: string;
+
+    @Property()
+    public settlementTx1Id?: string;
+
+    @Property()
+    public settlementTx2Id?: string;
+}
+
+export enum ChannelStatus {
+    PROPOSED = 'PROPOSED',
+    ACTIVE = 'ACTIVE',
+    CLOSING = 'CLOSING',
+    CLOSED = 'CLOSED',
+    DISPUTED = 'DISPUTED'
+}
+
+@Object()
+export class ChannelState {
+    @Property()
+    public channelId: string = '';
+
+    @Property()
+    public balance1: number = 0;
+
+    @Property()
+    public balance2: number = 0;
+
+    @Property()
+    public nonce: number = 0;
+
+    @Property()
+    public signatures: string[] = [];
 }
