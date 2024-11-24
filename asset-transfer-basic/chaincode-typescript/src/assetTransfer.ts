@@ -6,7 +6,7 @@
 
 import { Context, Contract, Info, Transaction } from 'fabric-contract-api';
 import { ChannelUtils } from './utils';
-import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
+import { Channel, ChannelStatus, PartyAddress } from './asset';
 // import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
 
 
