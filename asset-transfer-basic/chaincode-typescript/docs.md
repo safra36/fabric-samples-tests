@@ -10,12 +10,12 @@ docker ps -a | grep "dev-peer"
 - to view logs and check what's wrong
 ```sh
 docker logs -f 3c0e05fe7fbf
-```sh
+```
 
 - deploy or update chaincode
 ```sh
 ./network.sh deployCC -ccn basic -ccp ../asset-transfer-basic/chaincode-typescript/ -ccl typescript
-```sh
+```
 
 - add peer command to enviorments
 ```sh
