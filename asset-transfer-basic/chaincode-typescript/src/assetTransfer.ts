@@ -6,7 +6,7 @@
 
 import { Context, Contract, Info, Transaction } from 'fabric-contract-api';
 import { ChannelUtils } from './utils';
-import { Channel, ChannelStatus, PartyAddress } from './asset';
+import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
 // import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
 
 
@@ -15,7 +15,7 @@ export class PaymentChannelContract extends Contract {
 
 
 
-    /* @Transaction()
+    @Transaction()
     public async ProposeChannel(
         ctx: Context,
         channelId: string,
@@ -46,11 +46,12 @@ export class PaymentChannelContract extends Contract {
             createdAt: ctx.stub.getTxTimestamp().seconds.toNumber()
         };
 
+        console.log(channel);
+        
+
         await ChannelUtils.putState(ctx, channelId, channel);
-    } */
+    }
 
-
-    /*
 
     @Transaction()
     public async ActivateChannel(
@@ -177,8 +178,6 @@ export class PaymentChannelContract extends Contract {
         );
     }
 
-    */
-
     @Transaction()
     public async GetSettlementTransactions(
         ctx: Context,
@@ -200,7 +199,7 @@ export class PaymentChannelContract extends Contract {
 
 
 
-    /* @Transaction()
+    @Transaction()
     public async DisputeChannel(
         ctx: Context,
         channelId: string,
@@ -228,7 +227,7 @@ export class PaymentChannelContract extends Contract {
         channel.nonce = disputeState.nonce;
 
         await ChannelUtils.putState(ctx, channelId, channel);
-    } */
+    }
 
 
 
@@ -238,6 +237,10 @@ export class PaymentChannelContract extends Contract {
         channelId: string
     ): Promise<string> {
         const channel = await ChannelUtils.getState(ctx, channelId);
+
+        console.log("Fetched channel", channel);
+        
+
         if (!channel) {
             throw new Error(`Channel ${channelId} does not exist`);
         }

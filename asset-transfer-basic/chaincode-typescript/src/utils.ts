@@ -6,17 +6,25 @@ import { ec as EC } from 'elliptic';
 import { ChannelState, PartyAddress } from './asset';
 
 export class ChannelUtils {
+    
     private static readonly ec = new EC('secp256k1');
 
     public static async putState(ctx: Context, key: string, value: any): Promise<void> {
-        await ctx.stub.putState(
-            key,
-            Buffer.from(stringify(sortKeysRecursive(value)))
-        );
+        console.log(`Putting state for key: ${key}`);
+        const valueBytes = Buffer.from(stringify(sortKeysRecursive(value)));
+        console.log(`Value bytes length: ${valueBytes.length}`);
+        await ctx.stub.putState(key, valueBytes);
+        
+        // Verify put was successful
+        const verifyBytes = await ctx.stub.getState(key);
+        console.log(`Verification bytes length: ${verifyBytes?.length || 0}`);
     }
 
+
     public static async getState(ctx: Context, key: string): Promise<any> {
+        console.log(`Attempting to get state for key: ${key}`);
         const bytes = await ctx.stub.getState(key);
+        console.log(`Retrieved bytes: ${bytes ? bytes.length : 'null'} bytes`);
         if (!bytes || bytes.length === 0) {
             return null;
         }
