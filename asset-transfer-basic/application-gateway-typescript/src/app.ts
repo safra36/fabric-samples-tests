@@ -5,11 +5,12 @@
  */
 
 import * as grpc from '@grpc/grpc-js';
-import { connect, Contract, hash, Identity, Signer, signers } from '@hyperledger/fabric-gateway';
+import { connect, hash, Identity, Signer, signers } from '@hyperledger/fabric-gateway';
 import * as crypto from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import { TextDecoder } from 'util';
+// import { TextDecoder } from 'util';
+import { LedgerMethods } from './ledger-methods';
 
 const channelName = envOrDefault('CHANNEL_NAME', 'mychannel');
 const chaincodeName = envOrDefault('CHAINCODE_NAME', 'basic');
@@ -33,8 +34,8 @@ const peerEndpoint = envOrDefault('PEER_ENDPOINT', 'localhost:7051');
 // Gateway peer SSL host name override.
 const peerHostAlias = envOrDefault('PEER_HOST_ALIAS', 'peer0.org1.example.com');
 
-const utf8Decoder = new TextDecoder();
-const assetId = `asset${String(Date.now())}`;
+// const utf8Decoder = new TextDecoder();
+// const assetId = `asset${String(Date.now())}`;
 
 async function main(): Promise<void> {
     displayInputParameters();
@@ -69,23 +70,32 @@ async function main(): Promise<void> {
         // Get the smart contract from the network.
         const contract = network.getContract(chaincodeName);
 
+        const paymentCHName = 'random_channel';
+
+        // await LedgerMethods.CreateChannel(contract, paymentCHName);
+
+
+        await LedgerMethods.GetChannel(contract, paymentCHName)
+
         // Initialize a set of asset data on the ledger using the chaincode 'InitLedger' function.
-        await initLedger(contract);
+        // await initLedger(contract);
 
-        // Return all the current assets on the ledger.
-        await getAllAssets(contract);
+        // // Return all the current assets on the ledger.
+        // await getAllAssets(contract);
 
-        // Create a new asset on the ledger.
-        await createAsset(contract);
+        // // Create a new asset on the ledger.
+        // await createAsset(contract);
 
-        // Update an existing asset asynchronously.
-        await transferAssetAsync(contract);
+        // // Update an existing asset asynchronously.
+        // await transferAssetAsync(contract);
 
-        // Get the asset details by assetID.
-        await readAssetByID(contract);
+        // // Get the asset details by assetID.
+        // await readAssetByID(contract);
 
-        // Update an asset which does not exist.
-        await updateNonExistentAsset(contract)
+        // // Update an asset which does not exist.
+        // await updateNonExistentAsset(contract)
+
+
     } finally {
         gateway.close();
         client.close();
@@ -127,102 +137,102 @@ async function newSigner(): Promise<Signer> {
     return signers.newPrivateKeySigner(privateKey);
 }
 
-/**
- * This type of transaction would typically only be run once by an application the first time it was started after its
- * initial deployment. A new version of the chaincode deployed later would likely not need to run an "init" function.
- */
-async function initLedger(contract: Contract): Promise<void> {
-    console.log('\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger');
+// /**
+//  * This type of transaction would typically only be run once by an application the first time it was started after its
+//  * initial deployment. A new version of the chaincode deployed later would likely not need to run an "init" function.
+//  */
+// async function initLedger(contract: Contract): Promise<void> {
+//     console.log('\n--> Submit Transaction: InitLedger, function creates the initial set of assets on the ledger');
 
-    await contract.submitTransaction('InitLedger');
+//     await contract.submitTransaction('InitLedger');
 
-    console.log('*** Transaction committed successfully');
-}
+//     console.log('*** Transaction committed successfully');
+// }
 
-/**
- * Evaluate a transaction to query ledger state.
- */
-async function getAllAssets(contract: Contract): Promise<void> {
-    console.log('\n--> Evaluate Transaction: GetAllAssets, function returns all the current assets on the ledger');
+// /**
+//  * Evaluate a transaction to query ledger state.
+//  */
+// async function getAllAssets(contract: Contract): Promise<void> {
+//     console.log('\n--> Evaluate Transaction: GetAllAssets, function returns all the current assets on the ledger');
 
-    const resultBytes = await contract.evaluateTransaction('GetAllAssets');
+//     const resultBytes = await contract.evaluateTransaction('GetAllAssets');
 
-    const resultJson = utf8Decoder.decode(resultBytes);
-    const result: unknown = JSON.parse(resultJson);
-    console.log('*** Result:', result);
-}
+//     const resultJson = utf8Decoder.decode(resultBytes);
+//     const result: unknown = JSON.parse(resultJson);
+//     console.log('*** Result:', result);
+// }
 
-/**
- * Submit a transaction synchronously, blocking until it has been committed to the ledger.
- */
-async function createAsset(contract: Contract): Promise<void> {
-    console.log('\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments');
+// /**
+//  * Submit a transaction synchronously, blocking until it has been committed to the ledger.
+//  */
+// async function createAsset(contract: Contract): Promise<void> {
+//     console.log('\n--> Submit Transaction: CreateAsset, creates new asset with ID, Color, Size, Owner and AppraisedValue arguments');
 
-    await contract.submitTransaction(
-        'CreateAsset',
-        assetId,
-        'yellow',
-        '5',
-        'Tom',
-        '1300',
-    );
+//     await contract.submitTransaction(
+//         'CreateAsset',
+//         assetId,
+//         'yellow',
+//         '5',
+//         'Tom',
+//         '1300',
+//     );
 
-    console.log('*** Transaction committed successfully');
-}
+//     console.log('*** Transaction committed successfully');
+// }
 
-/**
- * Submit transaction asynchronously, allowing the application to process the smart contract response (e.g. update a UI)
- * while waiting for the commit notification.
- */
-async function transferAssetAsync(contract: Contract): Promise<void> {
-    console.log('\n--> Async Submit Transaction: TransferAsset, updates existing asset owner');
+// /**
+//  * Submit transaction asynchronously, allowing the application to process the smart contract response (e.g. update a UI)
+//  * while waiting for the commit notification.
+//  */
+// async function transferAssetAsync(contract: Contract): Promise<void> {
+//     console.log('\n--> Async Submit Transaction: TransferAsset, updates existing asset owner');
 
-    const commit = await contract.submitAsync('TransferAsset', {
-        arguments: [assetId, 'Saptha'],
-    });
-    const oldOwner = utf8Decoder.decode(commit.getResult());
+//     const commit = await contract.submitAsync('TransferAsset', {
+//         arguments: [assetId, 'Saptha'],
+//     });
+//     const oldOwner = utf8Decoder.decode(commit.getResult());
 
-    console.log(`*** Successfully submitted transaction to transfer ownership from ${oldOwner} to Saptha`);
-    console.log('*** Waiting for transaction commit');
+//     console.log(`*** Successfully submitted transaction to transfer ownership from ${oldOwner} to Saptha`);
+//     console.log('*** Waiting for transaction commit');
 
-    const status = await commit.getStatus();
-    if (!status.successful) {
-        throw new Error(`Transaction ${status.transactionId} failed to commit with status code ${String(status.code)}`);
-    }
+//     const status = await commit.getStatus();
+//     if (!status.successful) {
+//         throw new Error(`Transaction ${status.transactionId} failed to commit with status code ${String(status.code)}`);
+//     }
 
-    console.log('*** Transaction committed successfully');
-}
+//     console.log('*** Transaction committed successfully');
+// }
 
-async function readAssetByID(contract: Contract): Promise<void> {
-    console.log('\n--> Evaluate Transaction: ReadAsset, function returns asset attributes');
+// async function readAssetByID(contract: Contract): Promise<void> {
+//     console.log('\n--> Evaluate Transaction: ReadAsset, function returns asset attributes');
 
-    const resultBytes = await contract.evaluateTransaction('ReadAsset', assetId);
+//     const resultBytes = await contract.evaluateTransaction('ReadAsset', assetId);
 
-    const resultJson = utf8Decoder.decode(resultBytes);
-    const result: unknown = JSON.parse(resultJson);
-    console.log('*** Result:', result);
-}
+//     const resultJson = utf8Decoder.decode(resultBytes);
+//     const result: unknown = JSON.parse(resultJson);
+//     console.log('*** Result:', result);
+// }
 
-/**
- * submitTransaction() will throw an error containing details of any error responses from the smart contract.
- */
-async function updateNonExistentAsset(contract: Contract): Promise<void>{
-    console.log('\n--> Submit Transaction: UpdateAsset asset70, asset70 does not exist and should return an error');
+// /**
+//  * submitTransaction() will throw an error containing details of any error responses from the smart contract.
+//  */
+// async function updateNonExistentAsset(contract: Contract): Promise<void>{
+//     console.log('\n--> Submit Transaction: UpdateAsset asset70, asset70 does not exist and should return an error');
 
-    try {
-        await contract.submitTransaction(
-            'UpdateAsset',
-            'asset70',
-            'blue',
-            '5',
-            'Tomoko',
-            '300',
-        );
-        console.log('******** FAILED to return an error');
-    } catch (error) {
-        console.log('*** Successfully caught the error: \n', error);
-    }
-}
+//     try {
+//         await contract.submitTransaction(
+//             'UpdateAsset',
+//             'asset70',
+//             'blue',
+//             '5',
+//             'Tomoko',
+//             '300',
+//         );
+//         console.log('******** FAILED to return an error');
+//     } catch (error) {
+//         console.log('*** Successfully caught the error: \n', error);
+//     }
+// }
 
 /**
  * envOrDefault() will return the value of an environment variable, or a default value if the variable is undefined.

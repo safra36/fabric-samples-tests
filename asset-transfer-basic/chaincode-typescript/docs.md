@@ -2,6 +2,13 @@
 
 # Working and testing hyperledger
 
+
+
+- launch the network
+```sh
+./network.sh up createChannel -c mychannel -ca
+```
+
 - to get list of org docker containers:
 ```sh
 docker ps -a | grep "dev-peer"
@@ -19,6 +26,9 @@ docker logs -f 3c0e05fe7fbf
 
 - add peer command to enviorments
 ```sh
+cd test-network
+export PATH=${PWD}/../bin:$PATH
+export FABRIC_CFG_PATH=$PWD/../config/
 export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_LOCALMSPID="Org1MSP"
 export CORE_PEER_TLS_ROOTCERT_FILE=${PWD}/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt

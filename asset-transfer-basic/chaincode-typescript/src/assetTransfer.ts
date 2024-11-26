@@ -6,7 +6,7 @@
 
 import { Context, Contract, Info, Transaction } from 'fabric-contract-api';
 import { ChannelUtils } from './utils';
-import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
+import { Channel, ChannelState, ChannelStatus, PartyAddress, TimeLockState } from './asset';
 // import { Channel, ChannelState, ChannelStatus, PartyAddress } from './asset';
 
 
@@ -26,9 +26,22 @@ export class PaymentChannelContract extends Contract {
         initialBalance1: number,
         initialBalance2: number
     ): Promise<void> {
+        // Previous channel creation logic...
         const exists = await ChannelUtils.getState(ctx, channelId);
         if (exists) {
             throw new Error(`Channel ${channelId} already exists`);
+        }
+
+        // Verify both parties have sufficient balance
+        const wallet1 = await ChannelUtils.getState(ctx, `wallet_${party1Address}`);
+        const wallet2 = await ChannelUtils.getState(ctx, `wallet_${party2Address}`);
+
+        if (!wallet1 || wallet1.balance < initialBalance1) {
+            throw new Error(`Insufficient balance for party1: ${party1Address}`);
+        }
+
+        if (!wallet2 || wallet2.balance < initialBalance2) {
+            throw new Error(`Insufficient balance for party2: ${party2Address}`);
         }
 
         const party1: PartyAddress = { address: party1Address, publicKey: party1PubKey };
@@ -46,10 +59,96 @@ export class PaymentChannelContract extends Contract {
             createdAt: ctx.stub.getTxTimestamp().seconds.toNumber()
         };
 
-        console.log(channel);
-        
+        // Lock funds in the channel
+        wallet1.balance -= initialBalance1;
+        wallet2.balance -= initialBalance2;
 
         await ChannelUtils.putState(ctx, channelId, channel);
+        await ChannelUtils.putState(ctx, `wallet_${party1Address}`, wallet1);
+        await ChannelUtils.putState(ctx, `wallet_${party2Address}`, wallet2);
+    }
+
+    @Transaction()
+    public async SubmitTimeLockState(
+        ctx: Context,
+        channelId: string,
+        state: ChannelState,
+        timelock: number
+    ): Promise<void> {
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel || channel.status !== ChannelStatus.ACTIVE) {
+            throw new Error(`Invalid channel ${channelId}`);
+        }
+
+        // Verify signatures
+        if (!ChannelUtils.validateSignatures(state, channel.party1, channel.party2)) {
+            throw new Error('Invalid signatures on state');
+        }
+
+        // Create time-locked state
+        const timeLockState: TimeLockState = {
+            channelId,
+            state,
+            timelock,
+            sequence: state.nonce,
+            submittedBy: state.signature1 ? channel.party1.address : channel.party2.address
+        };
+
+        await ChannelUtils.putState(ctx, `timelock_${channelId}_${state.nonce}`, timeLockState);
+    }
+
+    @Transaction()
+    public async ExecuteTimeLockState(
+        ctx: Context,
+        channelId: string,
+        stateNonce: number
+    ): Promise<void> {
+        const timeLockState = await ChannelUtils.getState(ctx, `timelock_${channelId}_${stateNonce}`);
+        if (!timeLockState) {
+            throw new Error('Time-locked state not found');
+        }
+
+        const currentTime = ctx.stub.getTxTimestamp().seconds.toNumber();
+        if (currentTime < timeLockState.timelock) {
+            throw new Error('Time lock has not expired');
+        }
+
+        const channel = await ChannelUtils.getState(ctx, channelId);
+        if (!channel) {
+            throw new Error(`Channel ${channelId} not found`);
+        }
+
+        // Execute the state
+        channel.balance1 = timeLockState.state.balance1;
+        channel.balance2 = timeLockState.state.balance2;
+        channel.nonce = timeLockState.state.nonce;
+
+        await ChannelUtils.putState(ctx, channelId, channel);
+    }
+
+    @Transaction()
+    public async GetTransactionHistory(
+        ctx: Context,
+        address: string
+    ): Promise<string> {
+        const iterator = await ctx.stub.getHistoryForKey(`wallet_${address}`);
+        const history = [];
+        
+        while (true) {
+            const result = await iterator.next();
+            if (result.done) {
+                break;
+            }
+            
+            history.push({
+                txId: result.value.txId,
+                timestamp: result.value.timestamp,
+                value: JSON.parse(result.value.value.toString())
+            });
+        }
+        
+        await iterator.close();
+        return JSON.stringify(history);
     }
 
 
